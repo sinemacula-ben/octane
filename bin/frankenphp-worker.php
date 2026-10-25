@@ -69,8 +69,16 @@ if (PHP_OS_FAMILY === 'Linux' && ! is_null($requestMaxExecutionTime)) {
     set_time_limit((int) $requestMaxExecutionTime);
 }
 
+// Requests are parsed inside frankenphp_handle_request(), which is called with
+// "@" so a malformed body cannot crash the worker. We will restore the error
+// reporting level while the application handles each request, so its warnings
+// and notices are still reported rather than silenced along with the parsing.
+$errorReporting = error_reporting();
+
 try {
-    $handleRequest = static function () use ($worker, $frankenPhpClient, $debugMode) {
+    $handleRequest = static function () use ($worker, $frankenPhpClient, $debugMode, $errorReporting) {
+        $silenced = error_reporting($errorReporting);
+
         try {
             [$request, $context] = $frankenPhpClient->marshalRequest(new RequestContext());
 
@@ -92,6 +100,8 @@ try {
             $response->send();
 
             Stream::shutdown($e);
+        } finally {
+            error_reporting($silenced);
         }
     };
 
